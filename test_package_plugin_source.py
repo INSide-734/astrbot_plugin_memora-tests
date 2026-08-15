@@ -285,3 +285,21 @@ def test_worktree_source_includes_initialized_submodule_content(
     assert (packaged / "main.py").is_file()
     assert (packaged / "tests" / "test_contract.py").is_file()
     assert (packaged / "tests" / "draft.py").is_file()
+
+
+def test_create_zip_normalizes_member_metadata(tmp_path: Path) -> None:
+    """相同内容在不同源文件时间戳下应生成完全相同的 ZIP。"""
+
+    staging_root = tmp_path / "staging"
+    source = staging_root / "memora" / "main.py"
+    _write(source, "print('memora')\n")
+    first_archive = tmp_path / "first.zip"
+    second_archive = tmp_path / "second.zip"
+
+    os.utime(source, (946684800, 946684800))
+    package_plugin.create_zip(staging_root, first_archive)
+
+    os.utime(source, (1704067200, 1704067200))
+    package_plugin.create_zip(staging_root, second_archive)
+
+    assert first_archive.read_bytes() == second_archive.read_bytes()
