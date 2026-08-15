@@ -234,3 +234,54 @@ def test_git_source_includes_pinned_submodule_content(tmp_path: Path) -> None:
     packaged = staging_root / "memora"
     assert (packaged / "main.py").is_file()
     assert (packaged / "tests" / "test_contract.py").is_file()
+
+
+def test_worktree_source_includes_initialized_submodule_content(
+    tmp_path: Path,
+) -> None:
+    """源码工作树打包应包含已初始化子模块的当前文件。"""
+
+    dependency_root = tmp_path / "dependency"
+    dependency_root.mkdir()
+    _init_repo(dependency_root)
+    _write(dependency_root / "test_contract.py", "assert True\n")
+    _stage(dependency_root, "test_contract.py")
+    _commit(dependency_root, "添加测试契约")
+
+    dependency_remote = tmp_path / "dependency.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(dependency_root), str(dependency_remote)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    source_root = tmp_path / "repo"
+    source_root.mkdir()
+    _init_repo(source_root)
+    _write(source_root / "main.py")
+    _stage(source_root, "main.py")
+    _commit(source_root, "初始化主仓库")
+    _run_git(
+        source_root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(dependency_remote),
+        "tests",
+    )
+
+    _write(source_root / "tests" / "draft.py", "draft = True\n")
+    staging_root = tmp_path / "staging"
+    package_plugin.copy_worktree_source(
+        source_root,
+        staging_root,
+        "memora",
+        tmp_path / "output",
+    )
+
+    packaged = staging_root / "memora"
+    assert (packaged / "main.py").is_file()
+    assert (packaged / "tests" / "test_contract.py").is_file()
+    assert (packaged / "tests" / "draft.py").is_file()
