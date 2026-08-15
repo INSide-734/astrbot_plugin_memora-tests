@@ -111,3 +111,61 @@ async def test_next_config_save_persists_only_new_reranker_names() -> None:
     assert source["reranker"]["strategy"] == "embedding_similarity"
     assert source["reranker"]["embedding_similarity_lambda"] == 0.35
     assert "cross_encoder_lambda" not in source["reranker"]
+
+
+def test_legacy_llm_formatter_mode_migrates_to_rule() -> None:
+    """早期文档宣传过但从未实现的 llm 格式化模式应迁移为 rule，且不修改源字典。"""
+
+    from core.platform.config import migrate_legacy_config
+
+    source = {
+        "human_like_memory": {
+            "emotion_scoring_mode": "basic",
+            "human_like_formatter_mode": "llm",
+            "type_aware_decay_enabled": False,
+        }
+    }
+
+    migrated, applied = migrate_legacy_config(source)
+
+    assert migrated["human_like_memory"] == {
+        "emotion_scoring_mode": "basic",
+        "human_like_formatter_mode": "rule",
+        "type_aware_decay_enabled": False,
+    }
+    assert applied == ("human_like_memory.formatter_llm_to_rule",)
+    assert source["human_like_memory"]["human_like_formatter_mode"] == "llm"
+
+
+def test_valid_formatter_modes_are_not_migrated() -> None:
+    """rule 与 disabled 是当前合法模式，不得触发迁移标识。"""
+
+    from core.platform.config import migrate_legacy_config
+
+    for mode in ("rule", "disabled"):
+        migrated, applied = migrate_legacy_config(
+            {"human_like_memory": {"human_like_formatter_mode": mode}}
+        )
+        assert migrated["human_like_memory"]["human_like_formatter_mode"] == mode
+        assert applied == ()
+
+
+def test_config_manager_snapshot_normalizes_legacy_llm_formatter_mode() -> None:
+    """生产快照应把旧 llm 值消费为 rule，并保留同节其它用户设置，不再整节降级。"""
+
+    from core.platform.config import ConfigManager
+
+    manager = ConfigManager(
+        {
+            "human_like_memory": {
+                "emotion_scoring_mode": "basic",
+                "human_like_formatter_mode": "llm",
+                "type_aware_decay_enabled": False,
+            }
+        }
+    )
+
+    section = manager.get_section("human_like_memory")
+    assert section["human_like_formatter_mode"] == "rule"
+    assert section["emotion_scoring_mode"] == "basic"
+    assert section["type_aware_decay_enabled"] is False

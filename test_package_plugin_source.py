@@ -176,3 +176,61 @@ def test_worktree_source_handles_non_utf8_filename(tmp_path: Path) -> None:
     package_plugin.copy_worktree_source(source_root, staging_root, "memora", output_dir)
 
     assert (staging_root / "memora" / decoded_name).is_file()
+
+
+def _commit(repo_root: Path, message: str) -> None:
+    """提交临时仓库当前已暂存内容。"""
+
+    _run_git(
+        repo_root,
+        "-c",
+        "user.name=Memora Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        message,
+    )
+
+
+def test_git_source_includes_pinned_submodule_content(tmp_path: Path) -> None:
+    """从 Git HEAD 打包源码时应归档 gitlink 固定提交，而非遗漏子模块内容。"""
+
+    dependency_root = tmp_path / "dependency"
+    dependency_root.mkdir()
+    _init_repo(dependency_root)
+    _write(dependency_root / "test_contract.py", "assert True\n")
+    _stage(dependency_root, "test_contract.py")
+    _commit(dependency_root, "添加测试契约")
+
+    dependency_remote = tmp_path / "dependency.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(dependency_root), str(dependency_remote)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    source_root = tmp_path / "repo"
+    source_root.mkdir()
+    _init_repo(source_root)
+    _write(source_root / "main.py")
+    _stage(source_root, "main.py")
+    _commit(source_root, "初始化主仓库")
+    _run_git(
+        source_root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(dependency_remote),
+        "tests",
+    )
+    _commit(source_root, "添加测试子模块")
+
+    staging_root = tmp_path / "staging"
+    package_plugin.copy_git_source(source_root, staging_root, "memora")
+
+    packaged = staging_root / "memora"
+    assert (packaged / "main.py").is_file()
+    assert (packaged / "tests" / "test_contract.py").is_file()
