@@ -109,7 +109,41 @@ def test_command_endpoints_register_under_plugin_entrypoint() -> None:
                 import types
                 from pathlib import Path
 
-                from astrbot.core.star.star_handler import star_handlers_registry
+                from astrbot.core.star.star_handler import (
+                    EventType,
+                    StarHandlerMetadata,
+                    star_handlers_registry,
+                )
+
+                def stale_memora():
+                    # 模拟热重载遗留的 Memora 命令组。
+                    return None
+
+                def stale_status():
+                    # 模拟热重载遗留的 Memora 状态命令。
+                    return None
+
+                stale_memora.__qualname__ = "CommandEndpointsMixin.memora"
+                stale_status.__qualname__ = "CommandEndpointsMixin.status"
+                for handler_full_name, handler_name, handler_module_path, handler in (
+                    ("data.main_memora", "memora", "data.main", stale_memora),
+                    (
+                        "core.platform.transport.commands.command_endpoints_status",
+                        "status",
+                        "core.platform.transport.commands.command_endpoints",
+                        stale_status,
+                    ),
+                ):
+                    star_handlers_registry.append(
+                        StarHandlerMetadata(
+                            event_type=EventType.AdapterMessageEvent,
+                            handler_full_name=handler_full_name,
+                            handler_name=handler_name,
+                            handler_module_path=handler_module_path,
+                            handler=handler,
+                            event_filters=[],
+                        )
+                    )
 
                 package = "data.plugins.astrbot_plugin_memora"
                 data_package = types.ModuleType("data")

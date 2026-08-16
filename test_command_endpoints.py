@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
+from functools import partial
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -291,7 +292,7 @@ def test_command_endpoints_are_owned_by_plugin_entrypoint() -> None:
 
 
 def test_legacy_command_handlers_are_removed_without_touching_others() -> None:
-    """只清理旧模块归属的 /memora 命令处理器。"""
+    """只清理已知旧归属的 Memora 命令处理器。"""
     from core.platform.transport.commands.command_endpoints import (
         _remove_legacy_command_handlers,
     )
@@ -299,10 +300,16 @@ def test_legacy_command_handlers_are_removed_without_touching_others() -> None:
     class Handler:
         """用于模拟 AstrBot 注册表条目的最小对象。"""
 
-        def __init__(self, module_path: str, name: str) -> None:
-            """保存处理器所属模块和方法名称。"""
+        def __init__(
+            self,
+            module_path: str,
+            name: str,
+            handler: Callable[..., object],
+        ) -> None:
+            """保存处理器所属模块、名称和函数。"""
             self.handler_module_path = module_path
             self.handler_name = name
+            self.handler = handler
 
     class Registry:
         """用于观察注册表删除范围的最小容器。"""
@@ -319,28 +326,60 @@ def test_legacy_command_handlers_are_removed_without_touching_others() -> None:
             """删除指定的处理器。"""
             self.handlers.remove(handler)
 
-    legacy_group = Handler(
-        "core.platform.transport.commands.command_endpoints", "memora"
+    def legacy_memora() -> None:
+        """模拟旧版 Memora 指令组处理器。"""
+
+    def legacy_status() -> None:
+        """模拟旧版 Memora 状态处理器。"""
+
+    def legacy_rebuild_graph() -> None:
+        """模拟旧版 Memora 图重建处理器。"""
+
+    def unrelated_status() -> None:
+        """模拟复用历史模块路径的外部状态处理器。"""
+
+    legacy_memora.__qualname__ = "CommandEndpointsMixin.memora"
+    legacy_status.__qualname__ = "CommandEndpointsMixin.status"
+    legacy_rebuild_graph.__qualname__ = "CommandEndpointsMixin.rebuild_graph"
+    unrelated_status.__qualname__ = "OtherPlugin.status"
+    legacy_module_group = Handler(
+        "core.platform.transport.commands.command_endpoints",
+        "memora",
+        legacy_memora,
     )
-    legacy_endpoint = Handler(
-        "core.platform.transport.commands.command_endpoints", "rebuild_graph"
+    legacy_module_endpoint = Handler(
+        "core.platform.transport.commands.command_endpoints",
+        "rebuild_graph",
+        legacy_rebuild_graph,
     )
+    legacy_data_group = Handler("data.main", "memora", partial(legacy_memora))
+    legacy_data_endpoint = Handler("data.main", "status", legacy_status)
     non_command_handler = Handler(
-        "core.platform.transport.commands.command_endpoints", "unrelated"
+        "core.platform.transport.commands.command_endpoints",
+        "unrelated",
+        legacy_status,
     )
-    another_plugin_handler = Handler("other_plugin.commands", "memora")
+    another_plugin_handler = Handler("other_plugin.commands", "memora", legacy_memora)
+    same_path_other_plugin_handler = Handler("data.main", "status", unrelated_status)
     registry = Registry(
         [
-            legacy_group,
-            legacy_endpoint,
+            legacy_module_group,
+            legacy_module_endpoint,
+            legacy_data_group,
+            legacy_data_endpoint,
             non_command_handler,
             another_plugin_handler,
+            same_path_other_plugin_handler,
         ]
     )
 
     _remove_legacy_command_handlers(registry)
 
-    assert registry.handlers == [non_command_handler, another_plugin_handler]
+    assert registry.handlers == [
+        non_command_handler,
+        another_plugin_handler,
+        same_path_other_plugin_handler,
+    ]
 
 
 class TestCleanupModeMapping:
