@@ -209,3 +209,20 @@ class TestJsonParser:
         assert result["key_facts"] == ["张三有项目计划"]
         assert result["importance"] == 0.7
         assert len(result["memories"]) == 1
+
+    def test_repaired_nested_memories_promote_first_candidate(
+        self, parser: JsonParser
+    ) -> None:
+        """修复 JSON 的 memories[] 也应填充兼容顶层字段。"""
+        response = (
+            '{"memories":[{"summary":"张三讨论项目计划",'
+            '"topics":["项目"],"key_facts":["张三有项目计划"],'
+            '"sentiment":"neutral","importance":0.7,}]}'
+        )
+
+        result = parser.parse_llm_response(response, is_group_chat=False)
+
+        assert result["summary"] == "张三讨论项目计划"
+        assert result["topics"] == ["项目"]
+        assert result["key_facts"] == ["张三有项目计划"]
+        assert result["importance"] == 0.7
