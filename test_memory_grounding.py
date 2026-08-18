@@ -385,6 +385,23 @@ def test_grounding_accepts_today_normalized_from_message_timestamp() -> None:
     assert "grounding_numeric_conflict" not in result.reason_codes
 
 
+def test_grounding_rejects_today_for_tomorrow_noon() -> None:
+    """“明天中午”只能支持次日，不能同时支持消息当天。"""
+    timestamp = datetime(2026, 8, 18, 12, 0).timestamp()
+    source = "我明天中午去北京。"
+
+    result = MemoryGroundingValidator().validate(
+        _candidate(
+            "我在2026-08-18去北京。",
+            source_refs=[{"message_index": 0, "start": 0, "end": len(source)}],
+        ),
+        [_message(0, source, timestamp=timestamp)],
+        is_group_chat=False,
+    )
+
+    assert "grounding_numeric_conflict" in result.reason_codes
+
+
 @pytest.mark.asyncio
 async def test_grounding_judge_only_receives_current_referenced_scope() -> None:
     """Judge 只能看到当前候选引用的消息片段。"""
