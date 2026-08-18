@@ -317,6 +317,74 @@ def test_grounding_prompt_requires_source_language_and_exact_offsets() -> None:
     assert "不得猜测绝对年月日" in contract
 
 
+def test_grounding_prompt_declares_reference_budget() -> None:
+    """来源 Prompt 应声明与门禁 profile 相同的最大引用数。"""
+    contract = MemoryGroundingValidator().prompt_contract(2, max_references=16)
+
+    assert "每条记忆最多 16 条 source_refs" in contract
+
+
+def test_grounding_accepts_trusted_identity_label_numbers() -> None:
+    """可信身份标签中的数字不应被当作候选编造数字。"""
+    source = "我喜欢喝咖啡。"
+    message = _message(0, source, sender_name="阿明")
+    message.metadata = {
+        "identity_trusted": True,
+        "identity_namespace": "qq",
+        "stable_user_id": "123456",
+        "canonical_user_id": "123456",
+        "identity_label": "QQ:123456",
+    }
+
+    result = MemoryGroundingValidator().validate(
+        _candidate(
+            "阿明（QQ:123456）喜欢喝咖啡。",
+            source_refs=[{"message_index": 0, "start": 0, "end": len(source)}],
+        ),
+        [message],
+        is_group_chat=False,
+    )
+
+    assert result.allowed is True
+    assert "grounding_numeric_conflict" not in result.reason_codes
+
+
+def test_grounding_rejects_untrusted_identity_label_numbers() -> None:
+    """无可信标志的身份标签不得豁免候选数字校验。"""
+    source = "我喜欢喝咖啡。"
+    message = _message(0, source, sender_name="阿明")
+    message.metadata = {"identity_label": "QQ:123456"}
+
+    result = MemoryGroundingValidator().validate(
+        _candidate(
+            "阿明（QQ:123456）喜欢喝咖啡。",
+            source_refs=[{"message_index": 0, "start": 0, "end": len(source)}],
+        ),
+        [message],
+        is_group_chat=False,
+    )
+
+    assert "grounding_numeric_conflict" in result.reason_codes
+
+
+def test_grounding_accepts_today_normalized_from_message_timestamp() -> None:
+    """消息时间戳可为“今天”提供确定的日期归一化锚点。"""
+    timestamp = datetime(2026, 8, 18, 12, 0).timestamp()
+    source = "我今天去了北京。"
+
+    result = MemoryGroundingValidator().validate(
+        _candidate(
+            "我在2026-08-18去了北京。",
+            source_refs=[{"message_index": 0, "start": 0, "end": len(source)}],
+        ),
+        [_message(0, source, timestamp=timestamp)],
+        is_group_chat=False,
+    )
+
+    assert result.allowed is True
+    assert "grounding_numeric_conflict" not in result.reason_codes
+
+
 @pytest.mark.asyncio
 async def test_grounding_judge_only_receives_current_referenced_scope() -> None:
     """Judge 只能看到当前候选引用的消息片段。"""

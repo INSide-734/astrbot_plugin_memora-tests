@@ -117,19 +117,21 @@ class TestMemoryExtractionResult:
     def test_accepts_summary_prompt_contract(self):
         """总结 Prompt 的 summary 结构应通过护栏且保留业务字段。"""
 
-        result = MemoryExtractionResult(
-            memories=[
-                {
-                    "summary": "我记得用户明确说过喜欢深烘咖啡",
-                    "topics": ["咖啡偏好"],
-                    "key_facts": ["用户喜欢深烘咖啡"],
-                    "participants": ["用户"],
-                    "sentiment": "positive",
-                    "importance": 0.8,
-                    "emotion_tags": ["开心"],
-                    "causal_relations": [],
-                }
-            ]
+        result = MemoryExtractionResult.model_validate(
+            {
+                "memories": [
+                    {
+                        "summary": "我记得用户明确说过喜欢深烘咖啡",
+                        "topics": ["咖啡偏好"],
+                        "key_facts": ["用户喜欢深烘咖啡"],
+                        "participants": ["用户"],
+                        "sentiment": "positive",
+                        "importance": 0.8,
+                        "emotion_tags": ["开心"],
+                        "causal_relations": [],
+                    }
+                ]
+            }
         )
 
         memory = result.memories[0]
@@ -138,6 +140,23 @@ class TestMemoryExtractionResult:
         assert memory.key_facts == ["用户喜欢深烘咖啡"]
         assert memory.participants == ["用户"]
         assert memory.sentiment == "positive"
+
+    def test_accepts_prompt_source_reference_budget(self):
+        """来源引用上限应覆盖门禁配置允许的 16 条引用。"""
+        result = MemoryExtractionResult.model_validate(
+            {
+                "memories": [
+                    {
+                        "summary": "一条包含足够内容的来源记忆",
+                        "source_refs": [
+                            {"message_index": index, "start": 0, "end": 1}
+                            for index in range(16)
+                        ],
+                    }
+                ]
+            }
+        )
+        assert len(result.memories[0].source_refs) == 16
 
 
 # =============================================================================
